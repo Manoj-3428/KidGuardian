@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">PhoneLock</string>
+    <string name="accessibility_description">Detects abusive words and locks screen</string>
+    <string name="accessibility_service_description">Detects abusive words and locks screen</string>
+</resources>
