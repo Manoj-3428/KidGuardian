@@ -7,12 +7,14 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
+@RequiresApi(Build.VERSION_CODES.DONUT)
 class AbuseDetectionService : AccessibilityService() {
 
-    private val abusiveWords = listOf("fuck", "sex", "porn", "nude","bokka","mingi")
+    private val abusiveWords = listOf("manoj")
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -30,7 +32,7 @@ class AbuseDetectionService : AccessibilityService() {
                         // 🟢 Optional notification (for visual debug)
                         showNotification(word, lowerText)
 
-                        // 🚀 Launch screen capture permission (one time)
+                        // 🚨 Launch screenshot capture (which will send email and block screen)
                         launchScreenshotCapture()
 
                         return

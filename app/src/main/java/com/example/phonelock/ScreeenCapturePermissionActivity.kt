@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
-
 class ScreenCapturePermissionActivity : Activity() {
 
     private val REQUEST_SCREENSHOT = 1001

