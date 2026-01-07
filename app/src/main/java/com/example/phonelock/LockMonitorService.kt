@@ -14,19 +14,31 @@ class LockMonitorService : Service() {
     
     private val handler = Handler(Looper.getMainLooper())
     private var isLocked = true
+    private var isUnlocked = false // Track if unlock has been called
     private var complaintId: String? = null
     private var detectedWord: String? = null
     private var secretCode: String? = null
+    private var lastCheckTime = 0L
+    private val CHECK_INTERVAL = 2000L // Check every 2 seconds instead of 1
     
     private val checkRunnable = object : Runnable {
         override fun run() {
-            if (isLocked) {
-                // Always try to bring lock screen to front
-                // This ensures child cannot escape
+            // Stop checking if unlocked or service is destroyed
+            if (isUnlocked || !isLocked) {
+                return
+            }
+            
+            val currentTime = System.currentTimeMillis()
+            // Only check if enough time has passed
+            if (currentTime - lastCheckTime >= CHECK_INTERVAL) {
+                lastCheckTime = currentTime
+                // Only bring to front if not already visible
                 bringLockScreenToFront()
-                
-                // Check again every 1 second (more aggressive)
-                handler.postDelayed(this, 1000)
+            }
+            
+            // Schedule next check only if still locked
+            if (isLocked && !isUnlocked) {
+                handler.postDelayed(this, CHECK_INTERVAL)
             }
         }
     }
@@ -64,6 +76,14 @@ class LockMonitorService : Service() {
             context.stopService(intent)
             isServiceRunning = false
         }
+        
+        // Helper to mark service as unlocked from outside
+        fun markUnlocked(context: Context) {
+            val intent = Intent(context, LockMonitorService::class.java).apply {
+                action = "MARK_UNLOCKED"
+            }
+            context.startService(intent)
+        }
     }
     
     override fun onCreate() {
@@ -73,6 +93,13 @@ class LockMonitorService : Service() {
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Handle unlock action
+        if (intent?.action == "MARK_UNLOCKED") {
+            markUnlocked()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        
         Log.d("LockMonitor", "Service started - ENFORCING LOCK MODE")
         
         complaintId = intent?.getStringExtra("COMPLAINT_ID")
@@ -80,14 +107,16 @@ class LockMonitorService : Service() {
         secretCode = intent?.getStringExtra("SECRET_CODE")
         
         isLocked = true
+        isUnlocked = false
+        lastCheckTime = System.currentTimeMillis()
         
         // Start as foreground service
         startForeground(NOTIFICATION_ID, createNotification())
         
-        // Start monitoring IMMEDIATELY and continuously
-        handler.post(checkRunnable)
+        // Start monitoring with delay
+        handler.postDelayed(checkRunnable, CHECK_INTERVAL)
         
-        // Also bring lock screen to front immediately
+        // Also bring lock screen to front immediately (only once)
         bringLockScreenToFront()
         
         return START_STICKY
@@ -98,7 +127,14 @@ class LockMonitorService : Service() {
         Log.d("LockMonitor", "Service destroyed")
         handler.removeCallbacks(checkRunnable)
         isLocked = false
+        isUnlocked = true
         isServiceRunning = false
+    }
+    
+    fun markUnlocked() {
+        isUnlocked = true
+        isLocked = false
+        handler.removeCallbacks(checkRunnable)
     }
     
     override fun onBind(intent: Intent?): IBinder? {
@@ -147,13 +183,18 @@ class LockMonitorService : Service() {
     }
     
     private fun bringLockScreenToFront() {
+        // Don't bring to front if already unlocked
+        if (isUnlocked) {
+            return
+        }
+        
         try {
             Log.d("LockMonitor", "Bringing lock screen to front...")
             val intent = Intent(this, LockScreenActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
                          Intent.FLAG_ACTIVITY_CLEAR_TOP or
                          Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                         Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 putExtra("COMPLAINT_ID", complaintId)
                 putExtra("DETECTED_WORD", detectedWord)
                 putExtra("SECRET_CODE", secretCode)

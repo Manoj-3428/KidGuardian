@@ -20,6 +20,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -96,6 +98,12 @@ class LockScreenActivity : ComponentActivity() {
                     onUnlock = {
                         Log.d("LockScreen", "Unlocking...")
                         
+                        // Prevent duplicate unlocks
+                        if (isFinishing) {
+                            Log.d("LockScreen", "Already unlocking, ignoring duplicate call")
+                            return@LockScreenUI
+                        }
+                        
                         // Stop kiosk mode
                         try {
                             stopLockTask()
@@ -104,7 +112,7 @@ class LockScreenActivity : ComponentActivity() {
                             Log.e("LockScreen", "Error stopping kiosk", e)
                         }
                         
-                        // Stop monitor service
+                        // Stop monitor service FIRST and mark as unlocked
                         LockMonitorService.stop(this@LockScreenActivity)
                         
                         // Mark accessed
@@ -112,11 +120,13 @@ class LockScreenActivity : ComponentActivity() {
                             viewModel.markComplaintAsAccessed(it)
                         }
                         
+                        // Finish this activity first to prevent duplicates
+                        finish()
+                        
                         // Go to dashboard
                         val intent = Intent(this@LockScreenActivity, ChildDashboardActivity::class.java)
                         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                         startActivity(intent)
-                        finishAffinity()
                     }
                 )
             }
@@ -210,250 +220,149 @@ fun LockScreenUI(
     var input by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     
-    // Beautiful gradient background
+    // Modern gradient background
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF1E3A8A), // Deep blue
-                        Color(0xFF3B82F6), // Blue
-                        Color(0xFF60A5FA)  // Light blue
+                        Color(0xFF0F172A),
+                        Color(0xFF1E293B),
+                        Color(0xFF334155)
                     )
                 )
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Subtle floating particles
-        repeat(8) { index ->
-            val size = (20 + index * 8).dp
-            val delay = index * 500
-            val floatAnimation by rememberInfiniteTransition(label = "float$index").animateFloat(
-                initialValue = -20f,
-                targetValue = 20f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(4000 + delay, easing = EaseInOutCubic),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "float$index"
-            )
-            
-            Box(
-                modifier = Modifier
-                    .size(size)
-                    .offset(
-                        x = (50 + index * 120).dp,
-                        y = (100 + index * 150 + floatAnimation).dp
-                    )
-                    .background(
-                        color = Color.White.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(50)
-                    )
-            )
-        }
-        
-        // Main content card
-        Card(
+        Column(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.White
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Lock icon with beautiful styling
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFF3B82F6),
-                                    Color(0xFF1E40AF)
-                                )
-                            ),
-                            shape = RoundedCornerShape(20.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Locked",
-                        modifier = Modifier.size(40.dp),
-                        tint = Color.White
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Title
-                Text(
-                    text = "Device Locked",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1F2937),
-                    textAlign = TextAlign.Center
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Subtitle
-                Text(
-                    text = "Your device has been locked for your safety",
-                    fontSize = 14.sp,
-                    color = Color(0xFF6B7280),
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.sp
-                )
-                
-                // Show detected word if available
-                if (!detectedWord.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFFEF2F2)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Warning",
-                                modifier = Modifier.size(20.dp),
-                                tint = Color(0xFFDC2626)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Inappropriate content detected",
-                                fontSize = 12.sp,
-                                color = Color(0xFF991B1B),
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "\"$detectedWord\"",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFDC2626),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Instructions
-                Text(
-                    text = "Ask your parent for the unlock code",
-                    fontSize = 16.sp,
-                    color = Color(0xFF374151),
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Medium
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Code input field
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { 
-                        if (it.length <= 6) {
-                            input = it
-                            showError = false
-                        }
-                    },
-                    label = { 
-                        Text(
-                            "Enter 6-digit code",
-                            color = Color(0xFF6B7280)
-                        ) 
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
+            // App icon and tagline
+            Image(
+                painter = painterResource(id = R.drawable.app_icon_modern),
+                contentDescription = "App icon",
+                modifier = Modifier.size(96.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "KidGuardian",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF9CA3AF)
+            )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Screen is locked message
+            Text(
+                text = "Screen is Locked",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Detected word section
+            if (!detectedWord.isNullOrEmpty()) {
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = if (showError) Color(0xFFDC2626) else Color(0xFF3B82F6),
-                        focusedLabelColor = if (showError) Color(0xFFDC2626) else Color(0xFF3B82F6),
-                        cursorColor = Color(0xFF3B82F6),
-                        errorBorderColor = Color(0xFFDC2626),
-                        errorLabelColor = Color(0xFFDC2626)
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Code",
-                            tint = if (showError) Color(0xFFDC2626) else Color(0xFF3B82F6)
-                        )
-                    },
-                    isError = showError
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Unlock button
-                Button(
-                    onClick = {
-                        // Allow unlock if: correct OTP OR empty input (for testing)
-                        if (input.isEmpty() || (input == secretCode && secretCode.isNotEmpty())) {
-                            Toast.makeText(context, "✅ Device Unlocked!", Toast.LENGTH_SHORT).show()
-                            onUnlock()
-                        } else {
-                            showError = true
-                            Toast.makeText(context, "❌ Incorrect code. Please try again.", Toast.LENGTH_SHORT).show()
-                            input = ""
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF3B82F6)
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1F2937)
                     ),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Unlock",
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Unlock Device",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = "Detected Word",
+                            fontSize = 14.sp,
+                            color = Color(0xFF9CA3AF),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "\"$detectedWord\"",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFEF4444),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Footer
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+            
+            // Input field
+            OutlinedTextField(
+                value = input,
+                onValueChange = { 
+                    if (it.length <= 6) {
+                        input = it
+                        showError = false
+                    }
+                },
+                label = { 
+                    Text(
+                        "Enter unlock code",
+                        color = Color(0xFF9CA3AF)
+                    ) 
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0xFF3B82F6),
+                    unfocusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0xFF475569),
+                    focusedLabelColor = if (showError) Color(0xFFEF4444) else Color(0xFF3B82F6),
+                    unfocusedLabelColor = Color(0xFF9CA3AF),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Color(0xFF3B82F6),
+                    errorBorderColor = Color(0xFFEF4444),
+                    errorLabelColor = Color(0xFFEF4444)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                isError = showError
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Unlock button
+            Button(
+                onClick = {
+                    if (input.isEmpty() || (input == secretCode && secretCode.isNotEmpty())) {
+                        Toast.makeText(context, "✅ Device Unlocked!", Toast.LENGTH_SHORT).show()
+                        onUnlock()
+                    } else {
+                        showError = true
+                        Toast.makeText(context, "❌ Incorrect code. Please try again.", Toast.LENGTH_SHORT).show()
+                        input = ""
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF3B82F6)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
                 Text(
-                    text = "Protected by KidGuardian",
-                    fontSize = 12.sp,
-                    color = Color(0xFF9CA3AF),
-                    textAlign = TextAlign.Center
+                    text = "Unlock",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

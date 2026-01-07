@@ -31,7 +31,11 @@ class AbuseDetectionService : AccessibilityService() {
     // Parent link status cache
     private var isParentLinked = false
     private var lastParentCheckTime = 0L
-    private val PARENT_CHECK_INTERVAL = 30000L // Check every 30 seconds
+    private val PARENT_CHECK_INTERVAL = 5000L // Check every 5 seconds for more responsive detection
+    
+    // Track the actual foreground app (not keyboard)
+    private var lastForegroundApp: String? = null
+    private var lastForegroundAppTime: Long = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -53,10 +57,43 @@ class AbuseDetectionService : AccessibilityService() {
                     if (wasLinked != isParentLinked) {
                         Log.d("ABUSE_DETECT", "🔗 Parent link status changed: $isParentLinked")
                     }
+                    
+                    // Log current status for debugging
+                    Log.d("ABUSE_DETECT", "📊 Current parent link status: $isParentLinked (child: ${child?.name}, childId: ${child?.childId})")
+                } else {
+                    Log.w("ABUSE_DETECT", "⚠️ Failed to get child data: ${result.exceptionOrNull()?.message}")
                 }
             } catch (e: Exception) {
-                Log.e("ABUSE_DETECT", "Error checking parent link status", e)
+                Log.e("ABUSE_DETECT", "❌ Error checking parent link status", e)
             }
+        }
+    }
+    
+    /**
+     * Synchronously check parent link status (used when we need immediate result)
+     * This blocks the current thread, so use sparingly
+     */
+    private suspend fun checkParentLinkStatusSync(): Boolean {
+        return try {
+            val result = repository.getChildData()
+            if (result.isSuccess) {
+                val child = result.getOrNull()
+                val linked = child?.parentLinked == true
+                val wasLinked = isParentLinked
+                isParentLinked = linked
+                lastParentCheckTime = System.currentTimeMillis()
+                
+                if (wasLinked != linked) {
+                    Log.d("ABUSE_DETECT", "🔗 Parent link status changed (sync): $linked")
+                }
+                linked
+            } else {
+                Log.w("ABUSE_DETECT", "⚠️ Failed to get child data (sync): ${result.exceptionOrNull()?.message}")
+                isParentLinked // Return cached value
+            }
+        } catch (e: Exception) {
+            Log.e("ABUSE_DETECT", "❌ Error checking parent link status (sync)", e)
+            isParentLinked // Return cached value
         }
     }
 
@@ -68,16 +105,30 @@ class AbuseDetectionService : AccessibilityService() {
             return
         }
         
-        // Periodically refresh parent link status
+        // Periodically refresh parent link status (async)
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastParentCheckTime > PARENT_CHECK_INTERVAL) {
             checkParentLinkStatus()
         }
         
         // IMPORTANT: Only detect if parent account is linked
+        // If status is unknown or stale, do a quick sync check
+        var shouldProceed = isParentLinked
         if (!isParentLinked) {
-            // No parent linked - don't perform any detection
-            return
+            // If we haven't checked recently or status is false, do a synchronous check
+            if (currentTime - lastParentCheckTime > PARENT_CHECK_INTERVAL || lastParentCheckTime == 0L) {
+                // Use runBlocking to get immediate result (only blocks this thread briefly)
+                shouldProceed = kotlinx.coroutines.runBlocking {
+                    checkParentLinkStatusSync()
+                }
+                if (!shouldProceed) {
+                    // Still not linked - skip detection
+                    return
+                }
+            } else {
+                // Recently checked and still not linked - skip detection
+                return
+            }
         }
 
         // CRITICAL: Don't detect on our own app (prevents infinite loops)
@@ -86,6 +137,16 @@ class AbuseDetectionService : AccessibilityService() {
             // Skip all PhoneLock app screens: lock screen, permission, dashboard, etc.
             return
         }
+        
+        // Track foreground app changes (when window state changes)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // This is a real app window, not a keyboard
+            if (!isKeyboardPackage(packageName)) {
+                lastForegroundApp = packageName
+                lastForegroundAppTime = System.currentTimeMillis()
+                Log.d("ABUSE_DETECT", "📱 Foreground app changed to: $packageName")
+            }
+        }
 
         // Check for ANY content changes - capture entire screen
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
@@ -93,6 +154,11 @@ class AbuseDetectionService : AccessibilityService() {
             event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         ) {
+            // Log that we're processing events (only occasionally to avoid spam)
+            if (System.currentTimeMillis() % 10000 < 100) { // Log roughly every 10 seconds
+                Log.d("ABUSE_DETECT", "📝 Processing event: type=${event.eventType}, package=$packageName, parentLinked=$shouldProceed")
+            }
+            
             // Get text from multiple sources
             val allText = mutableListOf<String>()
             
@@ -113,6 +179,12 @@ class AbuseDetectionService : AccessibilityService() {
             // 3. Get text from the entire window hierarchy (FULL SCREEN)
             event.source?.let { source ->
                 extractTextFromNode(source, allText)
+            }
+            
+            // Log text extraction results (only occasionally)
+            if (allText.isNotEmpty() && System.currentTimeMillis() % 10000 < 100) {
+                val sampleText = allText.take(3).joinToString(", ")
+                Log.d("ABUSE_DETECT", "📄 Extracted text samples: $sampleText... (total: ${allText.size} items)")
             }
             
             // Check all collected text
@@ -136,11 +208,14 @@ class AbuseDetectionService : AccessibilityService() {
                         lastDetectedWord = word
                         lastDetectionTime = currentTime
 
-                        Log.e("ABUSE_DETECT", "🚨 DETECTED: $word in: $lowerText (app: ${event.packageName})")
+                        // Get the actual app name (not keyboard)
+                        val actualAppName = getActualAppName(packageName)
+                        
+                        Log.e("ABUSE_DETECT", "🚨 DETECTED: $word in: $lowerText (detected package: $packageName, actual app: $actualAppName)")
                         Log.d("ABUSE_DETECT", "⏰ Detection cooldown started - no detections for 1 minute")
 
-                        // Create complaint and launch screenshot flow
-                        handleAbuseDetection(word, lowerText, event.packageName?.toString() ?: "Unknown")
+                        // Create complaint and launch screenshot flow with actual app name
+                        handleAbuseDetection(word, lowerText, actualAppName)
                         return
                     }
                 }
@@ -178,11 +253,76 @@ class AbuseDetectionService : AccessibilityService() {
         }
     }
 
+    /**
+     * Check if a package is a keyboard/input method
+     */
+    private fun isKeyboardPackage(packageName: String): Boolean {
+        val packageNameLower = packageName.lowercase()
+        return packageNameLower.contains("inputmethod") ||
+               packageNameLower.contains("keyboard") ||
+               packageNameLower.contains(".ime") ||
+               packageNameLower.contains("com.google.android.inputmethod") ||
+               packageNameLower.contains("com.samsung.android.honeyboard") ||
+               packageNameLower.contains("com.swiftkey") ||
+               packageNameLower.contains("com.touchtype.swiftkey") ||
+               packageNameLower.contains("com.gboard") ||
+               packageNameLower.contains("com.sec.android.inputmethod")
+    }
+    
+    /**
+     * Get the actual app name, not the keyboard package
+     * If the detected package is a keyboard, use the last known foreground app
+     */
+    private fun getActualAppName(detectedPackage: String): String {
+        // If it's not a keyboard, return as is
+        if (!isKeyboardPackage(detectedPackage)) {
+            return detectedPackage
+        }
+        
+        // If it's a keyboard, try to get the last foreground app
+        // Check if we have a recent foreground app (within last 5 seconds)
+        val currentTime = System.currentTimeMillis()
+        if (lastForegroundApp != null && 
+            (currentTime - lastForegroundAppTime) < 5000) {
+            Log.d("ABUSE_DETECT", "🔍 Keyboard detected, using last foreground app: $lastForegroundApp")
+            return lastForegroundApp!!
+        }
+        
+        // Fallback: Try to get current foreground app using ActivityManager
+        return try {
+            val activityManager = getSystemService(android.app.ActivityManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // Use getRunningAppProcesses to find foreground app
+                val runningProcesses = activityManager.runningAppProcesses
+                runningProcesses?.firstOrNull { processInfo ->
+                    processInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+                }?.let { processInfo ->
+                    // Get the first package name from the process
+                    processInfo.pkgList?.firstOrNull()?.let { pkg ->
+                        if (!isKeyboardPackage(pkg)) {
+                            return pkg
+                        }
+                    }
+                }
+            }
+            
+            // If we still don't have a valid app, return detected package
+            // (This should rarely happen since we track foreground apps)
+            Log.w("ABUSE_DETECT", "Could not determine foreground app, using detected package: $detectedPackage")
+            detectedPackage
+        } catch (e: Exception) {
+            Log.e("ABUSE_DETECT", "Error getting foreground app", e)
+            // Last resort: return detected package (keyboard)
+            detectedPackage
+        }
+    }
+    
     private fun isMonitoringEnabled(): Boolean {
         return try {
             val userRole = repository.getUserRole()
             // Only monitor if user is a child
             if (userRole != UserRole.CHILD) {
+                Log.d("ABUSE_DETECT", "⏸️ Monitoring disabled: user is not a child (role: $userRole)")
                 return false
             }
             
@@ -190,7 +330,7 @@ class AbuseDetectionService : AccessibilityService() {
             // In the future, you can check parent's monitoring preference here
             true
         } catch (e: Exception) {
-            Log.e("ABUSE_DETECT", "Error checking monitoring status", e)
+            Log.e("ABUSE_DETECT", "❌ Error checking monitoring status", e)
             false
         }
     }
