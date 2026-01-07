@@ -35,7 +35,7 @@ class LockMonitorService : Service() {
                 // Only bring to front if not already visible
                 bringLockScreenToFront()
             }
-            
+                
             // Schedule next check only if still locked
             if (isLocked && !isUnlocked) {
                 handler.postDelayed(this, CHECK_INTERVAL)

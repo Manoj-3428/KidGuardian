@@ -127,7 +127,7 @@ class AbuseDetectionService : AccessibilityService() {
                 }
             } else {
                 // Recently checked and still not linked - skip detection
-                return
+            return
             }
         }
 
@@ -316,7 +316,7 @@ class AbuseDetectionService : AccessibilityService() {
             detectedPackage
         }
     }
-    
+
     private fun isMonitoringEnabled(): Boolean {
         return try {
             val userRole = repository.getUserRole()
