@@ -8,6 +8,25 @@ KidGuardian is an Android parental control application that monitors a child's d
 
 ---
 
+Screenshots
+
+![kidguradian1](https://github.com/user-attachments/assets/933efcbc-bb53-4bae-ac21-c1590d9bf4ef)
+![kg2](https://github.com/user-attachments/assets/4a34e88f-3ad8-4937-bcfb-524bd2e5a458)
+![kg3](https://github.com/user-attachments/assets/52bb866e-6679-4520-9d3b-3aa88a0d40b4)
+![kg4](https://github.com/user-attachments/assets/54bd4ba5-d9e7-4b1e-a305-e4c727ce2ed6)
+![kg5](https://github.com/user-attachments/assets/3c7d54b9-98e4-4a95-b915-868ee7e25d7c)
+![kg6](https://github.com/user-attachments/assets/7965fbf4-005c-4f62-a174-76e145b6feaf)
+![kg7](https://github.com/user-attachments/assets/dd55a990-0334-41d9-a1e3-a3884f5a6a47)
+![kg8](https://github.com/user-attachments/assets/f2b322e6-7daa-4fb9-bcea-e57cb023555c)
+![kg9](https://github.com/user-attachments/assets/0f7a014c-bc52-4cb5-9eb9-d1ab208d35c8)
+![kg10](https://github.com/user-attachments/assets/527bda9c-98c1-4ed1-a9f2-010f8aa2ef46)
+![kg11](https://github.com/user-attachments/assets/bbd3863d-03c4-4b3c-9963-af9cf54851e7)
+![kg12](https://github.com/user-attachments/assets/87c3833a-c44b-40ee-8f3c-6fad76de0697)
+![kg13](https://github.com/user-attachments/assets/2408f174-476d-4649-9218-775c5be7df2b)
+![kg14](https://github.com/user-attachments/assets/181c5566-4368-45c2-ad5b-de7cd549186d)
+
+
+
 User Flow
 
 Child Setup
@@ -137,10 +156,7 @@ Notes
 - Parent link status is checked every 5 seconds for responsiveness
 - When lock screen is active, child cannot access any other screen or application until correct unlock code is entered
 
----
 
-Screenshots
 
-![kidguradian1](https://github.com/user-attachments/assets/933efcbc-bb53-4bae-ac21-c1590d9bf4ef)
 
 
