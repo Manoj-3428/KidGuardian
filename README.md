@@ -1,23 +1,5 @@
 KidGuardian - Parental Control App
 
-Screenshots
-
-![Screenshot 1](screenshots/kg1.jpeg)
-![Screenshot 2](screenshots/kg2.jpeg)
-![Screenshot 3](screenshots/kg3.jpeg)
-![Screenshot 4](screenshots/kg4.jpeg)
-![Screenshot 5](screenshots/kg5.jpeg)
-![Screenshot 6](screenshots/kg6.jpeg)
-![Screenshot 7](screenshots/kg7.jpeg)
-![Screenshot 8](screenshots/kg77.jpeg)
-![Screenshot 9](screenshots/kg8.jpeg)
-![Screenshot 10](screenshots/kg9.jpeg)
-![Screenshot 11](screenshots/kg10.jpeg)
-![Screenshot 12](screenshots/kg11.jpeg)
-![Screenshot 13](screenshots/kg12.jpeg)
-![Screenshot 14](screenshots/kg13.jpeg)
-![Screenshot 15](screenshots/kg14.jpeg)
-
 ---
 
 Overview
@@ -43,8 +25,9 @@ Detection Flow
 1. Child uses device normally
 2. Accessibility service monitors screen content in real-time
 3. When inappropriate word is detected, screen locks immediately
-4. Parent receives notification with unlock code
-5. Child must enter correct code to unlock device
+4. Lock screen blocks all access - child cannot enter any other screen or app
+5. Parent receives notification with unlock code
+6. Child must enter correct code to unlock device
 
 Unlock Flow
 1. Child sees lock screen with detected word
@@ -152,3 +135,10 @@ Notes
 - Accessibility service must be manually enabled in settings
 - Screenshot permission is requested on first detection
 - Parent link status is checked every 5 seconds for responsiveness
+- When lock screen is active, child cannot access any other screen or application until correct unlock code is entered
+
+---
+
+Screenshots
+
+[Add screenshots here]
